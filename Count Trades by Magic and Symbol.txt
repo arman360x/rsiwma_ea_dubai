@@ -1,0 +1,21 @@
+int CountTradesByMagicAndSymbol(int magicNumber, string symbol)
+{
+   int tradeCount = 0; // Initialize the trade count
+   int totalPositions = PositionsTotal(); // Get the total number of positions
+
+   // Loop through all positions
+   for(int i = 0; i < totalPositions; i++)
+   {
+      ulong ticket = PositionGetTicket(i); // Get position ticket by index
+      if(PositionSelectByTicket(ticket))   // Select the position by ticket
+      {
+         // Check if the position's magic number and symbol match the given criteria
+         if(PositionGetInteger(POSITION_MAGIC) == magicNumber && PositionGetString(POSITION_SYMBOL) == symbol)
+         {
+            tradeCount++; // Increment the trade count
+         }
+      }
+   }
+   
+   return tradeCount; // Return the count of matching trades
+}
