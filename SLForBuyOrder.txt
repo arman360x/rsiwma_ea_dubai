@@ -1,0 +1,58 @@
+// Function to modify stop loss to the low of the previous candle for buy orders only
+
+void ModifyStopLossForAllBuyOrders()
+{
+   int totalPositions = PositionsTotal(); // Get total open positions
+   
+   for (int i = 0; i < totalPositions; i++)
+   {
+      ulong ticket = PositionGetTicket(i); // Get the position ticket
+
+      if (!PositionSelectByTicket(ticket)) // Select the position by its ticket
+         continue;
+
+      // Check if the position is a BUY order
+      if (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
+      {
+         string symbol = PositionGetString(POSITION_SYMBOL); // Get the symbol of the position
+         double previousCandleLow = iLow(symbol, PERIOD_CURRENT, 1); // Get the low of the previous candle
+         double currentStopLoss = PositionGetDouble(POSITION_SL); // Get the current stop loss
+         double openPrice = PositionGetDouble(POSITION_PRICE_OPEN); // Get the open price
+
+         // Ensure the new stop loss is valid
+         if (previousCandleLow < openPrice && previousCandleLow > currentStopLoss)
+         {
+            MqlTradeRequest request;
+            MqlTradeResult result;
+
+            ZeroMemory(request); // Clear the trade request structure
+            ZeroMemory(result);  // Clear the trade result structure
+
+            // Prepare the trade request for modifying stop loss
+            request.action   = TRADE_ACTION_SLTP;   // Action for modifying SL/TP
+            request.position = ticket;             // Position ticket
+            request.symbol   = symbol;             // Position symbol
+            request.sl       = previousCandleLow;  // New stop loss value
+            request.tp       = PositionGetDouble(POSITION_TP); // Keep the existing take profit
+
+            // Send the trade request
+            if (OrderSend(request, result))
+            {
+               if (result.retcode == TRADE_RETCODE_DONE)
+                  Print("Stop loss for Order #", ticket, " modified successfully to ", previousCandleLow);
+               else
+                  Print("Failed to modify SL for Order #", ticket, ": ", result.comment);
+            }
+            else
+            {
+               Print("Error sending modification request for Order #", ticket, ": ", GetLastError());
+            }
+         }
+         else
+         {
+            Print("Invalid SL for Order #", ticket, ". Current SL: ", currentStopLoss, ", New SL: ", previousCandleLow);
+         }
+      }
+   }
+}
+
