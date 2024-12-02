@@ -1,0 +1,24 @@
+double GetOrderStopLoss(int magicNumber)
+{
+   double stopLoss = -1; // Default value if no order is found
+
+   // Loop through all open positions
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      // Get position ticket
+      ulong ticket = PositionGetTicket(i);
+
+      // Select the position by its ticket
+      if(PositionSelectByTicket(ticket))
+      {
+         // Check if the position's magic number matches
+         if(PositionGetInteger(POSITION_MAGIC) == magicNumber)
+         {
+            stopLoss = PositionGetDouble(POSITION_SL); // Get stop loss
+            break; // Exit the loop once the position is found
+         }
+      }
+   }
+
+   return stopLoss;
+}
