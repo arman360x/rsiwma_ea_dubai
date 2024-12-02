@@ -1,0 +1,43 @@
+double ExtractLotSize(string comment)
+{
+   // Find the position of "OL" in the comment
+   int pos = StringFind(comment, "OL");
+
+   // If "OL" is found, extract the part before it
+   if(pos > 0)
+   {
+      // Extract the substring before "OL"
+      string numericPart = StringSubstr(comment, 0, pos);
+
+      // Convert the extracted substring to a double and return
+      return StringToDouble(numericPart);
+   }
+
+   // Return 0 if "OL" is not found or no valid numeric part
+   return 0.0;
+}
+
+double GetOrderStopLoss(int magicNumber)
+{
+   double stopLoss = -1; // Default value if no order is found
+
+   // Loop through all open positions
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      // Get position ticket
+      ulong ticket = PositionGetTicket(i);
+
+      // Select the position by its ticket
+      if(PositionSelectByTicket(ticket))
+      {
+         // Check if the position's magic number matches
+         if(PositionGetInteger(POSITION_MAGIC) == magicNumber)
+         {
+            stopLoss = PositionGetDouble(POSITION_SL); // Get stop loss
+            break; // Exit the loop once the position is found
+         }
+      }
+   }
+
+   return stopLoss;
+}
