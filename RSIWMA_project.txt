@@ -1,0 +1,763 @@
+
+
+
+
+//+------------------------------------------------------------------+
+//|                                                    RSIWMA EA.mq4 |
+//|                                  Copyright @ arman360x@gmail.com |
+//|                                   https://fiverr.com/galaxyarman |
+//+------------------------------------------------------------------+
+#property copyright "Copyright @ arman360x@gmail.com"
+#property link      ""
+#property version   "1.00"
+
+
+input string Indicator_Settings="++++++++++++++++++++++++++";
+input string RSI_WMA_TF1="RSI WMA LOWER TF";
+input ENUM_TIMEFRAMES RSI_Timeframe = PERIOD_CURRENT;
+input int RSI_Period = 14;
+input ENUM_APPLIED_PRICE RSI_Applied_Price = PRICE_CLOSE;
+input ENUM_MA_METHOD WMA_METHOD = MODE_LWMA;
+input int WMA_Period = 50;
+input int EMA_Period = 20;
+
+input double RSI_Threshold_Buy = 30.0;
+input double RSI_Threshold_Sell = 70.0;
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+input bool UseHigherTimeFrame=true;//Use RSI WMA HTF
+input string RSI_WMA_TF2="RSI WMA HIGHER TF";
+
+input ENUM_TIMEFRAMES RSI_Timeframe2 = PERIOD_CURRENT;
+input int RSI_Period2 = 14;
+input ENUM_APPLIED_PRICE RSI_Applied_Price2 = PRICE_CLOSE;
+input ENUM_MA_METHOD WMA_METHOD2 = MODE_LWMA;
+input int WMA_Period2 = 50;
+input int EMA_Period2 = 20;
+
+input double RSI_Threshold_Buy2 = 30.0;
+input double RSI_Threshold_Sell2 = 70.0;
+
+//input bool DisplayBars =false;//Display Color Bars
+
+//input color BullishCandles = clrBlue;
+//input color BearishCandles = clrRed;
+input string EA_Settings="++++++++++++++++++++++++++";
+
+input bool UseUSDAmountPerTrader=false;//Use USD Amount Per Trade
+input double Trade_Value_USD = 500.0; // USD amount per trade
+input double LotSize=0.2;//Lot Size
+input double LotClosePartially =50;//Partial Close Lot %
+input double Profit_Target_1_Ratio = 1.0; // First profit target ratio
+input double Profit_Target_2_Ratio = 3.0; // Second profit target ratio
+
+input bool UseTrailingStop=false;//Use Trailing Stop
+input bool Use_Last_High_Low_Price =false;//Use Last High/Low Price
+input double Trail_Trigger_Ratio = 1.0; // Trailing Stop Loss ratio
+
+input int MagicNumber = 1234;//Magic Number
+double myPoint; //initialized in OnInit
+
+input int NumberOfActiveTradesPerChart=5;//Number Of Active  Trades Per Chart
+
+input double Spread = 1000;//Spread (Points)
+
+
+
+int rsi_handle;
+double rsi_values[];
+
+
+double WMA[];
+int WMA_Handle;
+
+
+double RSI2[];
+double WMA2[];
+
+datetime time = D'2024.10.20';
+
+double originalLotSize;
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+// Initialize `myPoint` for the current symbol
+   myPoint = SymbolInfoDouble(Symbol(), SYMBOL_POINT);
+
+// Adjust `myPoint` based on the number of digits for the current symbol
+   int digits = (int)SymbolInfoInteger(Symbol(), SYMBOL_DIGITS);
+   if(digits == 5 || digits == 3)
+     {
+      myPoint *= 10;
+     }
+
+
+
+
+   return(INIT_SUCCEEDED);
+  }
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {
+   for(int i = 1; i >= 0; i--)
+     {
+      // Construct the object name
+      string objName = "CandleColor_" + IntegerToString(i);
+
+      // Delete the object from the current chart
+      if(!ObjectDelete(0, objName))
+        {
+         Print("Failed to delete object: ", objName, " Error: ", GetLastError());
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+  {
+   double decimalPoint = SymbolInfoDouble(Symbol(), SYMBOL_POINT);
+   //Print("Decimal Point Value: ", decimalPoint);
+
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+   double spread = MathAbs(SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID));
+
+   double high = iHigh(_Symbol, PERIOD_CURRENT, 1);
+   double low = iLow(_Symbol, PERIOD_CURRENT, 1);
+
+//Print(high);
+//Print(low);
+   //Print(spread);
+//Print(decimalPoint);
+
+   double buysl = MathAbs(ask - low)+spread ;
+   double sellsl = MathAbs(high - bid)+spread;
+
+//Print(buysl);
+//Print(sellsl);
+
+   double buyslpoints = SafeDivide(buysl, decimalPoint);
+   double sellslpoints = SafeDivide(sellsl, decimalPoint);
+
+//Print(buyslpoints);
+//Print(sellslpoints);
+
+   double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+
+//Print(tickValue);
+
+   double buydivider = buyslpoints * tickValue;
+   double lotsizebuy = NormalizeDouble(SafeDivide(Trade_Value_USD, buydivider), 2);
+
+   double selldivider = sellslpoints * tickValue;
+   double lotsizesell = NormalizeDouble(SafeDivide(Trade_Value_USD, selldivider), 2);
+
+// Define the number of bars to process
+   int bars = Bars(_Symbol, RSI_Timeframe) - 10;
+   if(bars <= 0)
+     {
+      Print("Not enough bars to calculate.");
+      return;
+     }
+
+// Create RSI handle with parameters
+// iRSI(Symbol, Timeframe, Period, Applied Price)
+   rsi_handle = iRSI(_Symbol, PERIOD_M15, RSI_Period, RSI_Applied_Price);
+
+   if(CopyBuffer(rsi_handle, 0, 0, 3, rsi_values) <= 0)
+     {
+      Print("Failed to get RSI values");
+      return;
+     }
+
+
+ double rsi_value = rsi_values[0];
+ 
+ 
+ Print(rsi_value);
+
+
+
+ double imaonarray = Custom_iMAOnArray(rsi_values,bars,10,1,MODE_EMA);
+ 
+ Print(imaonarray);
+
+
+//
+//   for(int i = 0; i < bars; i++)
+//     {
+//      WMA_Handle = iMA(Symbol(), RSI_Timeframe, WMA_Period, 0, WMA_METHOD, PRICE_CLOSE);
+//
+//     }
+
+
+  }
+//+------------------------------------------------------------------+
+int CountTradesByMagicAndSymbol(int magicNumber, string symbol)
+  {
+   int tradeCount = 0; // Initialize the trade count
+   int totalPositions = PositionsTotal(); // Get the total number of positions
+
+// Loop through all positions
+   for(int i = 0; i < totalPositions; i++)
+     {
+      ulong ticket = PositionGetTicket(i); // Get position ticket by index
+      if(PositionSelectByTicket(ticket))   // Select the position by ticket
+        {
+         // Check if the position's magic number and symbol match the given criteria
+         if(PositionGetInteger(POSITION_MAGIC) == magicNumber && PositionGetString(POSITION_SYMBOL) == symbol)
+           {
+            tradeCount++; // Increment the trade count
+           }
+        }
+     }
+
+   return tradeCount; // Return the count of matching trades
+  }
+
+
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool NewBar()
+  {
+   static datetime LastTime = 0;
+   bool ret = iTime(_Symbol, _Period, 0) > LastTime && LastTime > 0;
+   LastTime = iTime(_Symbol, _Period, 0);
+   return ret;
+  }
+
+// Roni Bhai
+
+// Partial close for Buy positions
+void PartialCloseBuy()
+  {
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      if(PositionSelectByTicket(i) && PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY && PositionGetInteger(POSITION_MAGIC) == MagicNumber)  // Select the correct Buy position
+        {
+         // Retrieve position details
+         double positionVolume = PositionGetDouble(POSITION_VOLUME);
+         double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+         double stopLoss = PositionGetDouble(POSITION_SL);
+
+         // Calculate parameters
+         double slSize = stopLoss - openPrice; // Calculate SL size for Buy
+         double clSlot = NormalizeDouble(positionVolume * LotClosePartially * 0.01, _Digits); // Partial close lot size
+
+         // Verify conditions
+         if(clSlot > 0 && clSlot <= positionVolume)
+           {
+            double profitTarget = openPrice + slSize * Profit_Target_1_Ratio;
+
+            // Check profit target for Buy positions
+            //if (Ask >= profitTarget)
+              {
+               // Prepare the request for partial close
+               MqlTradeRequest request;
+               MqlTradeResult result;
+               ZeroMemory(request);
+               ZeroMemory(result);
+
+               request.action = TRADE_ACTION_DEAL;
+               request.symbol = Symbol();
+               request.volume = clSlot;
+               request.type = ORDER_TYPE_SELL; // To close part of Buy, use Sell
+               request.price = SymbolInfoDouble(Symbol(), SYMBOL_BID); // Use BID price to close Buy positions
+               request.deviation = 10;
+               request.magic = MagicNumber;
+
+               if(!OrderSend(request, result))
+                 {
+                  Print("Error closing part of the buy order: ", GetLastError());
+                 }
+               else
+                 {
+                  Print("Partial close successful: ", result.retcode);
+                 }
+              }
+           }
+        }
+     }
+  }
+
+// Partial close for Sell positions
+void PartialCloseSell()
+  {
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      //if (PositionSelectByTicket(i)) PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL && PositionGetInteger(POSITION_MAGIC) == MagicNumber) // Select the correct Sell position
+        {
+         // Retrieve position details
+         double positionVolume = PositionGetDouble(POSITION_VOLUME);
+         double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+         double stopLoss = PositionGetDouble(POSITION_SL);
+
+         // Calculate parameters
+         double slSize = openPrice - stopLoss; // Calculate SL size for Sell
+         double clSlot = NormalizeDouble(positionVolume * LotClosePartially * 0.01, _Digits); // Partial close lot size
+
+         // Verify conditions
+         if(clSlot > 0 && clSlot <= positionVolume)
+           {
+            double profitTarget = openPrice - slSize * Profit_Target_1_Ratio;
+
+            // Check profit target for Sell positions
+            //if (Bid <= profitTarget)
+              {
+               // Prepare the request for partial close
+               MqlTradeRequest request;
+               MqlTradeResult result;
+               ZeroMemory(request);
+               ZeroMemory(result);
+
+               request.action = TRADE_ACTION_DEAL;
+               request.symbol = Symbol();
+               request.volume = clSlot;
+               request.type = ORDER_TYPE_BUY; // To close part of Sell, use Buy
+               request.price = SymbolInfoDouble(Symbol(), SYMBOL_ASK); // Use ASK price to close Sell positions
+               request.deviation = 10;
+               request.magic = MagicNumber;
+
+               if(!OrderSend(request, result))
+                 {
+                  Print("Error closing part of the sell order: ", GetLastError());
+                 }
+               else
+                 {
+                  Print("Partial close successful: ", result.retcode);
+                 }
+              }
+           }
+        }
+     }
+  }
+
+
+// Ashfak
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void TrailPriceToBEBuy()
+  {
+// Retrieve the total number of positions
+   int totalPositions = PositionsTotal();
+
+   for(int i = 0; i < totalPositions; i++)
+     {
+      // Select the position
+      ulong ticket = PositionGetTicket(i);
+      if(PositionSelectByTicket(ticket))
+        {
+         // Check symbol and magic number
+         if(PositionGetString(POSITION_SYMBOL) == Symbol() && PositionGetInteger(POSITION_MAGIC) == MagicNumber)
+           {
+            // Retrieve position details
+            double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+            double stopLoss = PositionGetDouble(POSITION_SL);
+            double currentPrice = SymbolInfoDouble(Symbol(), SYMBOL_BID);
+
+            // Calculate the breakeven price (adjust the stop loss to the open price at breakeven)
+            double slSize = openPrice - stopLoss;
+            double bePrice = openPrice + slSize * Trail_Trigger_Ratio;  // Breakeven price trigger
+
+            if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY && currentPrice >= bePrice && currentPrice > stopLoss)
+              {
+               // Modify the stop loss to the breakeven price
+               //bool result = Trade.PositionModify(ticket, bePrice, PositionGetDouble(POSITION_TP)); // Modify stop loss to breakeven (bePrice)
+               //if (!result)
+                 {
+                  Print("Error modifying position for Buy: ", GetLastError());
+                 }
+              }
+           }
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void TrailPriceToBESell()
+  {
+// Retrieve the total number of positions
+   int totalPositions = PositionsTotal();
+
+   for(int i = 0; i < totalPositions; i++)
+     {
+      // Select the position
+      ulong ticket = PositionGetTicket(i);
+      if(PositionSelectByTicket(ticket))
+        {
+         // Check symbol and magic number
+         if(PositionGetString(POSITION_SYMBOL) == Symbol() && PositionGetInteger(POSITION_MAGIC) == MagicNumber)
+           {
+            // Retrieve position details
+            double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+            double stopLoss = PositionGetDouble(POSITION_SL);
+            double currentPrice = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
+
+            // Calculate breakeven price (adjust the stop loss to the open price at breakeven)
+            double slSize = stopLoss - openPrice;
+            double bePrice = openPrice - slSize * Trail_Trigger_Ratio;  // Breakeven price trigger
+
+            if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL && currentPrice <= bePrice && currentPrice < stopLoss)
+              {
+               // Modify the stop loss to the breakeven price
+               //bool result = Trade.PositionModify(ticket, bePrice, PositionGetDouble(POSITION_TP)); // Modify stop loss to breakeven (bePrice)
+               //if (!result)
+                 {
+                  Print("Error modifying position for Sell: ", GetLastError());
+                 }
+              }
+           }
+        }
+     }
+  }
+
+// Abul Hasnat
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+double CalculateLotSize(double riskAmount, double stopLossPips)
+  {
+// Get the tick value of the current symbol
+   double tickValue = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_VALUE);
+
+// Get the point value of the current symbol
+   double point = SymbolInfoDouble(Symbol(), SYMBOL_POINT);
+
+// Calculate lot size
+// Lot Size = (Risk Amount) / (Stop Loss in pips * Tick Value per lot)
+   double lotSize = SafeDivide(riskAmount, (stopLossPips * point * tickValue));
+
+// Return the calculated lot size, normalized to 2 decimal places
+   return NormalizeDouble(lotSize, 2);
+  }
+
+// Function for safe division to handle division by zero
+double SafeDivide(double numerator, double denominator)
+  {
+   if(denominator == 0.0)
+     {
+      Print("Error: Division by zero. Returning 0.");
+      return 0.0; // Return 0 or any default value when denominator is zero
+     }
+   return numerator / denominator;
+  }
+
+
+// Nobel
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+double ExtractLotSize(string comment)
+  {
+// Find the position of "OL" in the comment
+   int pos = StringFind(comment, "OL");
+
+// If "OL" is found, extract the part before it
+   if(pos > 0)
+     {
+      // Extract the substring before "OL"
+      string numericPart = StringSubstr(comment, 0, pos);
+
+      // Convert the extracted substring to a double and return
+      return StringToDouble(numericPart);
+     }
+
+// Return 0 if "OL" is not found or no valid numeric part
+   return 0.0;
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+double GetOrderStopLoss(int magicNumber)
+  {
+   double stopLoss = -1; // Default value if no order is found
+
+// Loop through all open positions
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      // Get position ticket
+      ulong ticket = PositionGetTicket(i);
+
+      // Select the position by its ticket
+      if(PositionSelectByTicket(ticket))
+        {
+         // Check if the position's magic number matches
+         if(PositionGetInteger(POSITION_MAGIC) == magicNumber)
+           {
+            stopLoss = PositionGetDouble(POSITION_SL); // Get stop loss
+            break; // Exit the loop once the position is found
+           }
+        }
+     }
+
+   return stopLoss;
+  }
+
+//Sayeed
+
+// Get Order Open Price
+double GetOrderOpenPrice(int magicNumber)
+  {
+   double openPrice = -1.0; // Default value if no position is found
+
+// Loop through all open positions
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      // Select the position by its index
+      ulong ticket = PositionGetInteger(POSITION_TICKET);
+
+      // Select the position by ticket
+      //if(PositionSelect(ticket))
+        {
+         // Check if the position's magic number matches
+         if(PositionGetInteger(POSITION_MAGIC) == magicNumber)
+           {
+            openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+            break; // Exit the loop once the position is found
+           }
+        }
+     }
+   return openPrice;
+  }
+
+// Get Order Lot Size
+double GetOrderLotSize(int magicNumber)
+  {
+   double lotSize = -1.0; // Default value if no position is found
+
+// Loop through all open positions
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      // Select the position by its ticket
+      if(PositionSelectByTicket(i))
+        {
+         // Check if the position's magic number matches
+         if(PositionGetInteger(POSITION_MAGIC) == magicNumber)
+           {
+            lotSize = PositionGetDouble(POSITION_VOLUME);
+            break; // Exit the loop once the position is found
+           }
+        }
+     }
+   return lotSize;
+  }
+
+
+// Get Order Comment
+string GetOrderComment(int magicNumber)
+  {
+   string comment = ""; // Default value if no position is found
+
+// Loop through all open positions
+   for(int i = 0; i < PositionsTotal(); i++)
+     {
+      // Select the position by its index
+      if(PositionSelectByTicket(i))
+        {
+         // Check if the position's magic number matches
+         if(PositionGetInteger(POSITION_MAGIC) == magicNumber)
+           {
+            comment = PositionGetString(POSITION_COMMENT);
+            break; // Exit the loop once the position is found
+           }
+        }
+     }
+   return comment;
+  }
+
+// Other
+
+// Function to modify stop loss to the low of the previous candle for buy orders only
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void ModifyStopLossForAllBuyOrders()
+  {
+   int totalPositions = PositionsTotal(); // Get total open positions
+
+   for(int i = 0; i < totalPositions; i++)
+     {
+      ulong ticket = PositionGetTicket(i); // Get the position ticket
+
+      if(!PositionSelectByTicket(ticket))  // Select the position by its ticket
+         continue;
+
+      // Check if the position is a BUY order
+      if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
+        {
+         string symbol = PositionGetString(POSITION_SYMBOL); // Get the symbol of the position
+         double previousCandleLow = iLow(symbol, PERIOD_CURRENT, 1); // Get the low of the previous candle
+         double currentStopLoss = PositionGetDouble(POSITION_SL); // Get the current stop loss
+         double openPrice = PositionGetDouble(POSITION_PRICE_OPEN); // Get the open price
+
+         // Ensure the new stop loss is valid
+         if(previousCandleLow < openPrice && previousCandleLow > currentStopLoss)
+           {
+            MqlTradeRequest request;
+            MqlTradeResult result;
+
+            ZeroMemory(request); // Clear the trade request structure
+            ZeroMemory(result);  // Clear the trade result structure
+
+            // Prepare the trade request for modifying stop loss
+            request.action   = TRADE_ACTION_SLTP;   // Action for modifying SL/TP
+            request.position = ticket;             // Position ticket
+            request.symbol   = symbol;             // Position symbol
+            request.sl       = previousCandleLow;  // New stop loss value
+            request.tp       = PositionGetDouble(POSITION_TP); // Keep the existing take profit
+
+            // Send the trade request
+            if(OrderSend(request, result))
+              {
+               if(result.retcode == TRADE_RETCODE_DONE)
+                  Print("Stop loss for Order #", ticket, " modified successfully to ", previousCandleLow);
+               else
+                  Print("Failed to modify SL for Order #", ticket, ": ", result.comment);
+              }
+            else
+              {
+               Print("Error sending modification request for Order #", ticket, ": ", GetLastError());
+              }
+           }
+         else
+           {
+            Print("Invalid SL for Order #", ticket, ". Current SL: ", currentStopLoss, ", New SL: ", previousCandleLow);
+           }
+        }
+     }
+  }
+
+// Function to modify stop loss to the high of the previous candle for sell orders only
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void ModifyStopLossForAllSellOrders()
+  {
+   int totalPositions = PositionsTotal(); // Get total open positions
+
+   for(int i = 0; i < totalPositions; i++)
+     {
+      ulong ticket = PositionGetTicket(i); // Get the position ticket
+
+      if(!PositionSelectByTicket(ticket))  // Select the position by its ticket
+         continue;
+
+      // Check if the position is a SELL order
+      if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
+        {
+         string symbol = PositionGetString(POSITION_SYMBOL); // Get the symbol of the position
+         double previousCandleHigh = iHigh(symbol, PERIOD_CURRENT, 1); // Get the high of the previous candle
+         double currentStopLoss = PositionGetDouble(POSITION_SL); // Get the current stop loss
+         double openPrice = PositionGetDouble(POSITION_PRICE_OPEN); // Get the open price
+
+         // Ensure the new stop loss is valid
+         if(previousCandleHigh > openPrice && previousCandleHigh < currentStopLoss)
+           {
+            MqlTradeRequest request;
+            MqlTradeResult result;
+
+            ZeroMemory(request); // Clear the trade request structure
+            ZeroMemory(result);  // Clear the trade result structure
+
+            // Prepare the trade request for modifying stop loss
+            request.action   = TRADE_ACTION_SLTP;   // Action for modifying SL/TP
+            request.position = ticket;             // Position ticket
+            request.symbol   = symbol;             // Position symbol
+            request.sl       = previousCandleHigh; // New stop loss value
+            request.tp       = PositionGetDouble(POSITION_TP); // Keep the existing take profit
+
+            // Send the trade request
+            if(OrderSend(request, result))
+              {
+               if(result.retcode == TRADE_RETCODE_DONE)
+                  Print("Stop loss for Order #", ticket, " modified successfully to ", previousCandleHigh);
+               else
+                  Print("Failed to modify SL for Order #", ticket, ": ", result.comment);
+              }
+            else
+              {
+               Print("Error sending modification request for Order #", ticket, ": ", GetLastError());
+              }
+           }
+         else
+           {
+            Print("Invalid SL for Order #", ticket, ". Current SL: ", currentStopLoss, ", New SL: ", previousCandleHigh);
+           }
+        }
+     }
+  }
+//+------------------------------------------------------------------+
+
+
+
+// Custom Moving Average on Array Function
+double Custom_iMAOnArray(double &array[], int total, int period, int shift, int ma_method)
+{
+   // Ensure the period is valid
+   if(period <= 0 || total <= period)
+      return 0;
+
+   // Calculate the moving average based on the method
+   double sum = 0;
+   
+   switch(ma_method)
+   {
+      case MODE_SMA:  // Simple Moving Average
+         for(int i = shift; i < shift + period; i++)
+            sum += array[i];
+         return sum / period;
+
+      case MODE_EMA:  // Exponential Moving Average
+         {
+            double alpha = 2.0 / (period + 1); // EMA smoothing factor
+            double ema = array[shift];         // Starting value for EMA
+            for(int i = shift + 1; i < shift + period; i++)
+               ema = (array[i] - ema) * alpha + ema; // EMA calculation
+            return ema;
+         }
+
+      case MODE_SMMA: // Smoothed Moving Average
+         {
+            double smma = array[shift];        // Starting value for SMMA
+            for(int i = shift + 1; i < shift + period; i++)
+               smma = (smma * (period - 1) + array[i]) / period; // SMMA calculation
+            return smma;
+         }
+
+      case MODE_LWMA: // Linear Weighted Moving Average
+         {
+            double weighted_sum = 0;           // Weighted sum for LWMA
+            int weight_total = 0;              // Total weight
+            for(int i = 0; i < period; i++)
+            {
+               weighted_sum += array[shift + i] * (period - i); // Weighted value
+               weight_total += (period - i);                    // Accumulate weights
+            }
+            return weighted_sum / weight_total; // Final LWMA result
+         }
+
+      default:
+         return 0; // Invalid method
+   }
+}
+
